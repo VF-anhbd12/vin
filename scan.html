@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quét QR</title>
+<script src="https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.6/dist/iife/reader/index.js"></script>
+<style>
+html,body{margin:0;height:100%;background:#000;color:#fff;font:16px -apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+video{position:fixed;inset:0;width:100%;height:100%;object-fit:cover}
+.fr{position:fixed;left:50%;top:42%;width:62vw;height:62vw;max-width:340px;max-height:340px;transform:translate(-50%,-50%);border:3px solid #fff;border-radius:16px;box-shadow:0 0 0 999px rgba(0,0,0,.4)}
+.top{position:fixed;left:0;right:0;top:0;padding:16px;text-align:center;background:rgba(0,0,0,.5)}
+.bar{position:fixed;left:0;right:0;bottom:0;display:flex;gap:10px;padding:14px;background:rgba(0,0,0,.6)}
+.bar a,.bar label{flex:1;text-align:center;padding:13px;border-radius:12px;font-weight:600;color:#fff;border:1px solid #fff;text-decoration:none}
+.bar label{background:#2b72c9;border-color:#2b72c9}
+</style>
+</head>
+<body>
+<video id="v" playsinline muted></video>
+<div class="fr"></div>
+<div class="top" id="t">Đưa mã QR vào khung</div>
+<div class="bar"><a id="back" href="#">Quay lại</a><label>📷 Chụp ảnh<input id="f" type="file" accept="image/*" capture="environment" hidden></label></div>
+<script>
+var P=new URLSearchParams(location.search),BACK=P.get("back")||"";
+var OK=/^https:\/\/script\.google\.com\/(a\/[^\/]+\/)?macros\/s\/[\w\-]+\/(exec|dev)$/.test(BACK.split("?")[0]);
+function $(i){return document.getElementById(i)}
+function done(txt){
+ var v=String(txt||"").toUpperCase().replace(/\s+/g,""),m=v.match(/[A-HJ-NPR-Z0-9]{17}/);if(m)v=m[0];
+ v=v.length>6?v.slice(-6):v;if(!v)return;
+ try{navigator.vibrate&&navigator.vibrate(60)}catch(e){}
+ $("t").textContent="Đã đọc: "+v;
+ if(OK)location.replace(BACK+"?q="+encodeURIComponent(v));else $("t").textContent="Đã đọc: "+v+" (thiếu link quay lại)"}
+$("back").onclick=function(e){e.preventDefault();if(OK)location.replace(BACK);else history.back()};
+var zxP=null;
+function zxInit(){if(!zxP){ZXingWASM.setZXingModuleOverrides({locateFile:function(p,pre){return/\.wasm$/.test(p)?"https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.6/dist/reader/"+p:pre+p}});zxP=1}}
+async function zx(src,w,h){
+ zxInit();var c=document.createElement("canvas"),k=Math.min(1,1000/Math.max(w,h));
+ c.width=Math.round(w*k);c.height=Math.round(h*k);var x=c.getContext("2d",{willReadFrequently:true});x.drawImage(src,0,0,c.width,c.height);
+ var r=await ZXingWASM.readBarcodes(x.getImageData(0,0,c.width,c.height),{formats:["QRCode"],tryRotate:true,tryInvert:true,tryHarder:true,maxNumberOfSymbols:1});
+ return r.length?r[0].text:null}
+var live=true;
+async function start(){
+ var v=$("v"),det=null;
+ try{if(window.BarcodeDetector)det=new BarcodeDetector({formats:["qr_code"]})}catch(e){}
+ try{
+  var s=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}},audio:false});
+  v.srcObject=s;await v.play();
+ }catch(e){$("t").textContent="Không mở được camera. Hãy cho phép quyền camera hoặc bấm Chụp ảnh.";return}
+ while(live){
+  try{if(v.videoWidth){
+   var t=null;
+   if(det){var r=await det.detect(v);if(r.length)t=r[0].rawValue}
+   if(!t)t=await zx(v,v.videoWidth,v.videoHeight);
+   if(t){live=false;done(t);return}}}catch(e){}
+  await new Promise(function(ok){setTimeout(ok,150)})}}
+$("f").onchange=async function(){
+ var f=this.files&&this.files[0];if(!f)return;live=false;$("t").textContent="Đang đọc ảnh…";
+ try{var bm=await createImageBitmap(f),t=null;
+  if(window.BarcodeDetector){try{var r=await new BarcodeDetector({formats:["qr_code"]}).detect(bm);if(r.length)t=r[0].rawValue}catch(e){}}
+  if(!t)t=await zx(bm,bm.width,bm.height);
+  if(t){done(t);return}
+ }catch(e){}
+ $("t").textContent="Không đọc được QR. Thử lại.";live=true;start()};
+start();
+</script>
+</body>
+</html>
